@@ -14,20 +14,26 @@
 
 LDAP_SRC = ../../..
 LDAP_BUILD = $(LDAP_SRC)
-LDAP_INC = -I$(LDAP_BUILD)/include -I$(LDAP_SRC)/include -I$(LDAP_SRC)/servers/slapd
+LDAP_INC = -I$(LDAP_BUILD)/include -I$(LDAP_SRC)/include -I$(LDAP_SRC)/servers/slapd -I/usr/local/samba/include
 LDAP_LIB = $(LDAP_BUILD)/libraries/libldap_r/libldap_r.la \
 	$(LDAP_BUILD)/libraries/liblber/liblber.la
 
 LIBTOOL = $(LDAP_BUILD)/libtool
 CC = gcc
-OPT = -g -O2 -Wall
+OPT = -g -O2 -Wall -L/usr/local/samba/lib -L/usr/local/lib/ldb -Wl,-rpath=/usr/local/samba/lib \
+	-lsamba-security -lndr -lldb -ltalloc
+
 DEFS = -DSLAPD_OVER_RDNVAL=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_PGUID=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_VERNUM=SLAPD_MOD_DYNAMIC
 INCS = $(LDAP_INC)
 LIBS = $(LDAP_LIB)
 
-PROGRAMS = pguid.la rdnval.la vernum.la
+PROGRAMS = pguid.la \
+	rdnval.la \
+	vernum.la \
+	libsamba_utils.la
+
 LTVER = 0:0:0
 
 prefix=/usr/local
@@ -44,6 +50,10 @@ moduledir = $(libexecdir)$(ldap_subdir)
 	$(LIBTOOL) --mode=compile $(CC) $(OPT) $(DEFS) $(INCS) -c $<
 
 all: $(PROGRAMS)
+
+libsamba_utils.la: samba_utils.lo
+	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
+	-rpath $(moduledir) -shared -o $@ $? $(LIBS)
 
 pguid.la: pguid.lo
 	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
