@@ -3001,6 +3001,16 @@ enum sc_conn_state {
 	SLAP_C_BINDING,			/* binding */
 	SLAP_C_CLIENT			/* outbound client conn */
 };
+
+/* This is only a header. Actual users should define their own
+ * structs with the ce_next / ce_key fields at the top and
+ * whatever else they need following.
+ */
+typedef struct ConnExtra {
+	LDAP_SLIST_ENTRY(ConnExtra) ce_next;
+	void *ce_key;
+} ConnExtra;
+
 struct Connection {
 	enum sc_struct_state	c_struct_state; /* structure management state */
 	enum sc_conn_state	c_conn_state;	/* connection state */
@@ -3117,6 +3127,9 @@ struct Connection {
 	SEND_SEARCH_REFERENCE *c_send_search_reference;
 	SEND_LDAP_EXTENDED *c_send_ldap_extended;
 	SEND_LDAP_INTERMEDIATE *c_send_ldap_intermediate;
+
+	/* anything needed by backend modules */
+	LDAP_SLIST_HEAD(c_e, ConnExtra) conn_extra;
 };
 
 #ifdef LDAP_DEBUG
