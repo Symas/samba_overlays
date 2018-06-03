@@ -29,7 +29,8 @@ DEFS = -DSLAPD_OVER_RDNVAL=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_AD_SCHEMA=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_SHOWDELETED=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_SECDESCRIPTOR=SLAPD_MOD_DYNAMIC \
-	-DSLAPD_OVER_OPPREP=SLAPD_MOD_DYNAMIC
+	-DSLAPD_OVER_OPPREP=SLAPD_MOD_DYNAMIC \
+	-DSLAPD_OVER_OBJECTGUID=SLAPD_MOD_DYNAMIC
 
 
 INCS = $(LDAP_INC)
@@ -42,7 +43,8 @@ PROGRAMS = pguid.la \
 	ad_schema.la \
 	show_deleted.la \
 	secdescriptor.la \
-	opprep.la
+	opprep.la \
+	objectguid.la
 
 LTVER = 0:0:0
 
@@ -90,6 +92,10 @@ secdescriptor.la: secdescriptor.lo
 	-rpath $(moduledir) -module -o $@ $? $(LIBS) ./.libs/libsamba_utils.la
 
 opprep.la: opprep.lo
+	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
+	-rpath $(moduledir) -module -o $@ $? $(LIBS) ./.libs/libsamba_utils.la
+
+objectguid.la: objectguid.lo
 	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
 	-rpath $(moduledir) -module -o $@ $? $(LIBS) ./.libs/libsamba_utils.la
 
