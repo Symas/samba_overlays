@@ -762,6 +762,10 @@ struct AttributeType {
 
 	AttributeDescription		*sat_ad;
 	ldap_pvt_thread_mutex_t		sat_ad_mutex;
+#ifdef ENABLE_SAMBA_COMPATIBILITY
+/* a placeholder for extended attribute data */
+	void                            *at_private;
+#endif
 };
 
 #define is_at_operational(at)	((at)->sat_usage)
@@ -795,7 +799,10 @@ struct ObjectClass {
 #define soc_at_oids_must		soc_oclass.oc_at_oids_must
 #define soc_at_oids_may			soc_oclass.oc_at_oids_may
 #define soc_extensions			soc_oclass.oc_extensions
-
+#ifdef ENABLE_SAMBA_COMPATIBILITY
+/* a placeholder for extended class data */
+	void *                          oc_private;
+#endif
 	LDAP_STAILQ_ENTRY(ObjectClass)	soc_next;
 };
 
