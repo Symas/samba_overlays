@@ -26,6 +26,7 @@ OPT = -g -O2 -Wall -L/usr/local/samba/lib -L/usr/local/lib/ldb -Wl,-rpath=/usr/l
 DEFS = -DSLAPD_OVER_RDNVAL=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_PGUID=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_VERNUM=SLAPD_MOD_DYNAMIC \
+	-DSLAPD_OVER_AD_SCHEMA=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_SHOWDELETED=SLAPD_MOD_DYNAMIC \
 	-DSLAPD_OVER_SECDESCRIPTOR=SLAPD_MOD_DYNAMIC
 
@@ -36,6 +37,7 @@ PROGRAMS = pguid.la \
 	rdnval.la \
 	vernum.la \
 	libsamba_utils.la \
+	ad_schema.la \
 	show_deleted.la \
 	secdescriptor.la
 
@@ -69,6 +71,10 @@ rdnval.la: rdnval.lo
 	-rpath $(moduledir) -module -o $@ $? $(LIBS)
 
 vernum.la: vernum.lo
+	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
+	-rpath $(moduledir) -module -o $@ $? $(LIBS)
+
+ad_schema.la: ad_schema.lo
 	$(LIBTOOL) --mode=link $(CC) $(OPT) -version-info $(LTVER) \
 	-rpath $(moduledir) -module -o $@ $? $(LIBS)
 
