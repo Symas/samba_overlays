@@ -106,7 +106,6 @@ samba_get_structural_class( Operation *op );
 
 struct security_descriptor *
 samba_get_object_sd( Operation *op, SlapReply *rs, TALLOC_CTX *mem_ctx );
-
 struct security_descriptor *
 samba_get_new_parent_sd( Operation *op, SlapReply *rs, TALLOC_CTX *mem_ctx );
 
