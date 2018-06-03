@@ -310,6 +310,45 @@ static int objectSubClassIndexer(
 	return rc;
 }
 
+#ifdef ENABLE_SAMBA_COMPATIBILITY
+static int normalize_to_int32(
+    slap_mask_t use,
+    Syntax *syntax,
+    MatchingRule *mr,
+    struct berval *val,
+    struct berval *out,
+    void *ctx)
+{
+	int32_t i, len;
+	char val_buf[ LDAP_PVT_INTTYPE_CHARS( unsigned long ) ];
+	struct berval tmp;
+	i = (int32_t) strtoll((char *)val->bv_val, NULL, 0);
+	len = sprintf(val_buf, "%d", i);
+
+	tmp.bv_len = len;
+	tmp.bv_val = &val_buf;
+	ber_dupbv_x( out, &tmp, ctx );
+	return LDAP_SUCCESS;
+}
+
+static int
+validate_dSHeuristics(
+	Syntax *syntax,
+	struct berval *in )
+{
+	int i;
+	for (i = 10; i <=90; i+=10) {
+		char ch[3];
+		snprintf(ch, 2, "%d", (i/10));
+		if ((in->bv_len >= i) &&
+		    (in->bv_val[i-1] != ch[0])) {
+			return LDAP_CONSTRAINT_VIOLATION;
+		}
+	}
+	return LDAP_SUCCESS;
+}
+#endif
+
 #define objectSubClassFilter octetStringFilter
 
 static ObjectClassSchemaCheckFN rootDseObjectClass;
@@ -327,10 +366,41 @@ static struct slap_schema_oc_map {
 	slap_mask_t ssom_flags;
 	size_t ssom_offset;
 } oc_map[] = {
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 	{ "top", "( 2.5.6.0 NAME 'top' "
 			"DESC 'top of the superclass chain' "
 			"ABSTRACT MUST objectClass )",
 		0, 0, offsetof(struct slap_internal_schema, si_oc_top) },
+#else
+	{ "top", "( 2.5.6.0 NAME 'top' "
+			"DESC 'top of the superclass chain' "
+			"ABSTRACT MUST ( objectClass ) "
+                        "MAY ( instanceType $ nTSecurityDescriptor $ objectCategory $ adminDescription $ "
+	  "adminDisplayName $ allowedAttributes $ allowedAttributesEffective $ allowedChildClasses $ "
+	  "allowedChildClassesEffective $ bridgeheadServerListBL $ canonicalName $ cn $ description $ "
+	  "directReports $ displayName $ displayNamePrintable $ dSASignature $ dSCorePropagationData $ "
+	  "extensionName $ flags $ fromEntry $ frsComputerReferenceBL $ fRSMemberReferenceBL $ "
+	  "fSMORoleOwner $ isCriticalSystemObject $ isDeleted $ isPrivilegeHolder $ lastKnownParent $ "
+	  "managedObjects $ masteredBy $ mS-DS-ConsistencyChildCount $ mS-DS-ConsistencyGuid $ "
+	  "msCOM-PartitionSetLink $ msCOM-UserLink $ msDS-Approx-Immed-Subordinates $ msDs-masteredBy $ "
+	  "msDS-MembersForAzRoleBL $ msDS-NCReplCursors $ msDS-NCReplInboundNeighbors $ msDS-NCReplOutboundNeighbors $ "
+	  "msDS-NcType $ msDS-NonMembersBL $ msDS-ObjectReferenceBL $ msDS-OperationsForAzRoleBL $ "
+	  "msDS-OperationsForAzTaskBL $ msDS-ReplAttributeMetaData $ msDS-ReplValueMetaData $ msDS-TasksForAzRoleBL $ "
+	  "msDS-TasksForAzTaskBL $ name $ netbootSCPBL $ nonSecurityMemberBL $ objectVersion $ otherWellKnownObjects $ "
+	  "ownerBL $ parentGUID $ partialAttributeDeletionList $ partialAttributeSet $ possibleInferiors $ "
+	  "proxiedObjectName $ proxyAddresses $ queryPolicyBL $ replPropertyMetaData $ replUpToDateVector $ "
+	  "repsFrom $ repsTo $ revision $ sDRightsEffective $ serverReferenceBL $ showInAdvancedViewOnly $ "
+	  "siteObjectBL $ subRefs $ systemFlags $ url $ uSNDSALastObjRemoved $ USNIntersite $ uSNLastObjRem $ "
+	  "uSNSource $ wbemPath $ wellKnownObjects $ wWWHomePage $ msSFU30PosixMemberOf $ "
+	  "msDFSR-ComputerReferenceBL $ msDFSR-MemberReferenceBL $ msDS-EnabledFeatureBL $ "
+	  "msDS-LastKnownRDN $ msDS-HostServiceAccountBL $ msDS-OIDToGroupLinkBl $ msDS-LocalEffectiveRecycleTime $ "
+	  "msDS-LocalEffectiveDeletionTime $ isRecycled $ msDS-PSOApplied $ msDS-PrincipalName $ "
+	  "msDS-RevealedListBL $ msDS-AuthenticatedToAccountlist $ msDS-IsPartialReplicaFor $ msDS-IsDomainFor $ "
+	  "msDS-IsFullReplicaFor $ msDS-RevealedDSAs $ msDS-KrbTgtLinkBl $ whenCreated $ whenChanged $ "
+	  "uSNCreated $ uSNChanged $ subschemaSubEntry $ structuralObjectClass $ objectGUID $ distinguishedName $ "
+	  "modifyTimeStamp $ memberOf $ createTimeStamp $ msDS-NC-RO-Replica-Locations-BL ) )",
+		0, 0, offsetof(struct slap_internal_schema, si_oc_top) },
+#endif /*LDAP_AD_COMPATIBILITY*/
 	{ "extensibleObject", "( 1.3.6.1.4.1.1466.101.120.111 "
 			"NAME 'extensibleObject' "
 			"DESC 'RFC4512: extensible object' "
@@ -360,6 +430,7 @@ static struct slap_schema_oc_map {
 			"MUST ( cn $ subtreeSpecification ) )",
 		subentryObjectClass, SLAP_OC_SUBENTRY|SLAP_OC_OPERATIONAL,
 		offsetof(struct slap_internal_schema, si_oc_subentry) },
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 	{ "subschema", "( 2.5.20.1 NAME 'subschema' "
 		"DESC 'RFC4512: controlling subschema (sub)entry' "
 		"AUXILIARY "
@@ -368,6 +439,15 @@ static struct slap_schema_oc_map {
 			"matchingRuleUse ) )",
 		subentryObjectClass, SLAP_OC_OPERATIONAL,
 		offsetof(struct slap_internal_schema, si_oc_subschema) },
+#else /* temporarily (maybe) butchered so provisioning could pass, got to fix it later */
+	{ "subschema", "( 2.5.20.1 NAME 'subschema' "
+		"DESC 'RFC4512: controlling subschema (sub)entry' "
+		"MAY ( dITStructureRules $ nameForms $ dITContentRules $ "
+			"objectClasses $ attributeTypes $ matchingRules $ "
+			"matchingRuleUse $ modifyTimeStamp $ extendedAttributeInfo $ extendedClassInfo ) )",
+		0, SLAP_OC_OPERATIONAL,
+		offsetof(struct slap_internal_schema, si_oc_subschema) },
+#endif /*LDAP_AD_COMPATIBILITY*/
 #ifdef LDAP_COLLECTIVE_ATTRIBUTES
 	{ "collectiveAttributeSubentry", "( 2.5.17.2 "
 			"NAME 'collectiveAttributeSubentry' "
@@ -448,7 +528,11 @@ static struct slap_schema_ad_map {
 			"DESC 'RFC4512: structural object class of entry' "
 			"EQUALITY objectIdentifierMatch "
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.38 "
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 			"SINGLE-VALUE NO-USER-MODIFICATION USAGE directoryOperation )",
+#else
+	  "SINGLE-VALUE )",
+#endif /* todo this will be restored to no-user-modificartion eventually when we adapt provisioning */
 		NULL, 0,
 		oidValidate, objectClassPretty,
 		NULL, NULL, objectSubClassMatch,
@@ -459,7 +543,11 @@ static struct slap_schema_ad_map {
 			"EQUALITY generalizedTimeMatch "
 			"ORDERING generalizedTimeOrderingMatch "
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 "
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 			"SINGLE-VALUE NO-USER-MODIFICATION USAGE directoryOperation )",
+#else
+	  "SINGLE-VALUE )",
+#endif /* todo this will be restored to no-user-modificartion eventually */
 		NULL, SLAP_AT_MANAGEABLE,
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
@@ -469,7 +557,11 @@ static struct slap_schema_ad_map {
 			"EQUALITY generalizedTimeMatch "
 			"ORDERING generalizedTimeOrderingMatch "
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 "
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 			"SINGLE-VALUE NO-USER-MODIFICATION USAGE directoryOperation )",
+#else
+	  "SINGLE-VALUE )",
+#endif /* todo this will be restored to no-user-modificartion eventually */
 		NULL, SLAP_AT_MANAGEABLE,
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
@@ -504,8 +596,12 @@ static struct slap_schema_ad_map {
 	{ "subschemaSubentry", "( 2.5.18.10 NAME 'subschemaSubentry' "
 			"DESC 'RFC4512: name of controlling subschema entry' "
 			"EQUALITY distinguishedNameMatch "
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE "
 			"NO-USER-MODIFICATION USAGE directoryOperation )",
+#else
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )",
+#endif /* todo probably remove this in the future */
 		NULL, SLAP_AT_DYNAMIC,
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
@@ -756,7 +852,11 @@ static struct slap_schema_ad_map {
 	{ "dITContentRules", "( 2.5.21.2 NAME 'dITContentRules' "
 			"DESC 'RFC4512: DIT content rules' "
 			"EQUALITY objectIdentifierFirstComponentMatch "
+#ifndef ENABLE_SAMBA_COMPATIBILITY /* temporary, to be removed */
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.16 USAGE directoryOperation )",
+#else
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.16 )",
+#endif
 		subentryAttribute, SLAP_AT_HIDE,
 		oidValidate, NULL,
 		NULL, NULL, objectClassMatch, NULL, NULL,
@@ -772,7 +872,11 @@ static struct slap_schema_ad_map {
 	{ "attributeTypes", "( 2.5.21.5 NAME 'attributeTypes' "
 			"DESC 'RFC4512: attribute types' "
 			"EQUALITY objectIdentifierFirstComponentMatch "
+#ifndef ENABLE_SAMBA_COMPATIBILITY /* temporary, to be removed */
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.3 USAGE directoryOperation )",
+#else
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.3 )",
+#endif
 		subentryAttribute, 0,
 		oidValidate, NULL,
 		NULL, NULL, attributeTypeMatch, NULL, NULL,
@@ -780,7 +884,11 @@ static struct slap_schema_ad_map {
 	{ "objectClasses", "( 2.5.21.6 NAME 'objectClasses' "
 			"DESC 'RFC4512: object classes' "
 			"EQUALITY objectIdentifierFirstComponentMatch "
+#ifndef ENABLE_SAMBA_COMPATIBILITY /* temporary, to be removed */
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.37 USAGE directoryOperation )",
+#else
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.37 )",
+#endif
 		subentryAttribute, 0,
 		oidValidate, NULL,
 		NULL, NULL, objectClassMatch, NULL, NULL,
@@ -821,7 +929,11 @@ static struct slap_schema_ad_map {
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
 		offsetof(struct slap_internal_schema, si_ad_aliasedObjectName) },
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 	{ "ref", "( 2.16.840.1.113730.3.1.34 NAME 'ref' "
+#else
+	  { "ref", "( 2.16.840.1.113730.3.1.250 NAME 'ref' "
+#endif 
 			"DESC 'RFC3296: subordinate referral URL' "
 			"EQUALITY caseExactMatch "
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 "
@@ -878,8 +990,12 @@ static struct slap_schema_ad_map {
 #ifdef LDAP_DYNAMIC_OBJECTS
 	{ "entryTtl", "( 1.3.6.1.4.1.1466.101.119.3 NAME 'entryTtl' "
 			"DESC 'RFC2589: entry time-to-live' "
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 			"SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE "
 			"NO-USER-MODIFICATION USAGE dSAOperation )",
+#else
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+#endif /* restore this later */
 		dynamicAttribute, SLAP_AT_MANAGEABLE,
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
@@ -904,6 +1020,7 @@ static struct slap_schema_ad_map {
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
 		offsetof(struct slap_internal_schema, si_ad_distinguishedName) },
+#ifndef ENABLE_SAMBA_COMPATIBILITY
 	{ "name", "( 2.5.4.41 NAME 'name' "
 			"DESC 'RFC4519: common supertype of name attributes' "
 			"EQUALITY caseIgnoreMatch "
@@ -913,6 +1030,17 @@ static struct slap_schema_ad_map {
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
 		offsetof(struct slap_internal_schema, si_ad_name) },
+#else
+	  /* this is RDN in AD/Samba */
+	{ "name", "( 1.2.840.113556.1.4.1 NAME 'name' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_name) },
+#endif
 	{ "cn", "( 2.5.4.3 NAME ( 'cn' 'commonName' ) "
 			"DESC 'RFC4519: common name(s) for which the entity is known by' "
 			"SUP name )",
@@ -1018,6 +1146,920 @@ static struct slap_schema_ad_map {
 		NULL, NULL,
 		NULL, NULL, NULL, NULL, NULL,
 		offsetof(struct slap_internal_schema, si_ad_x509PrivateKey) },
+
+#ifdef ENABLE_SAMBA_COMPATIBILITY
+	  	/* samba attributes for top */
+	{ "instanceType", "( 1.2.840.113556.1.2.1 NAME 'instanceType' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_instanceType) },
+
+	{ "nTSecurityDescriptor", "( 1.2.840.113556.1.2.281 NAME 'nTSecurityDescriptor' "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.5 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_nTSecurityDescriptor) },
+	
+       { "objectCategory", "( 1.2.840.113556.1.4.782 NAME 'objectCategory' "
+         "EQUALITY distinguishedNameMatch "
+	 "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_objectCategory) },
+
+	{ "adminDescription", "( 1.2.840.113556.1.2.226 NAME 'adminDescription' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_adminDescription) },
+
+	{ "adminDisplayName", "( 1.2.840.113556.1.2.194 NAME 'adminDisplayName' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_adminDisplayName) },
+
+	{ "allowedAttributes", "( 1.2.840.113556.1.4.913 NAME 'allowedAttributes' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_allowedAttributes) },
+
+	{ "allowedAttributesEffective", "( 1.2.840.113556.1.4.914 NAME 'allowedAttributesEffective' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_allowedAttributesEffective) },
+
+	{ "allowedChildClasses", "( 1.2.840.113556.1.4.911 NAME 'allowedChildClasses' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_allowedChildClasses) },
+
+	{ "allowedChildClassesEffective", "( 1.2.840.113556.1.4.912 NAME 'allowedChildClassesEffective' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_allowedChildClassesEffective) },
+
+	{ "bridgeheadServerListBL", "( 1.2.840.113556.1.4.820 NAME 'bridgeheadServerListBL' "
+	  "EQUALITY distinguishedNameMatch " 
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_bridgeheadServerListBL) },
+
+	{ "canonicalName", "( 1.2.840.113556.1.4.916 NAME 'canonicalName' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_canonicalName) },
+
+	{ "directReports", "( 1.2.840.113556.1.2.436 NAME 'directReports' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_directReports) },
+
+	{ "displayName", "( 1.2.840.113556.1.2.13 NAME 'displayName' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_displayName) },
+
+	{ "displayNamePrintable", "( 1.2.840.113556.1.2.353 NAME 'displayNamePrintable' "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_displayNamePrintable) },
+	
+	{ "dSASignature", "(1.2.840.113556.1.2.74 NAME 'dSASignature' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_dSASignature) },
+
+	{ "dSCorePropagationData", "(1.2.840.113556.1.4.1357 NAME 'dSCorePropagationData' "
+	  "EQUALITY generalizedTimeMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_dSCorePropagationData) },
+
+	{ "extensionName", "( 1.2.840.113556.1.2.227 NAME 'extensionName' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_extensionName) },
+	
+	{ "flags", "( 1.2.840.113556.1.4.38 NAME 'flags' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_flags) },
+
+	{ "fromEntry", "( 1.2.840.113556.1.4.910 NAME 'fromEntry' "
+	  "EQUALITY booleanMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_fromEntry) },
+
+	{ "frsComputerReferenceBL", "( 1.2.840.113556.1.4.870 NAME 'frsComputerReferenceBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_frsComputerReferenceBL) },
+
+	{ "fRSMemberReferenceBL", "( 1.2.840.113556.1.4.876 NAME 'fRSMemberReferenceBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_fRSMemberReferenceBL) },
+
+	{ "fSMORoleOwner", "( 1.2.840.113556.1.4.369 NAME 'fSMORoleOwner' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_fSMORoleOwner) },
+
+	{ "isCriticalSystemObject", "( 1.2.840.113556.1.4.868 NAME 'isCriticalSystemObject' "
+	  "EQUALITY booleanMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_isCriticalSystemObject) },
+
+	{ "isDeleted", "( 1.2.840.113556.1.2.48 NAME 'isDeleted' "
+	  "EQUALITY booleanMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_isDeleted) },
+
+	{ "isPrivilegeHolder", "( 1.2.840.113556.1.4.638 NAME 'isPrivilegeHolder' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_isPrivilegeHolder) },
+
+	{ "lastKnownParent", "( 1.2.840.113556.1.4.781 NAME 'lastKnownParent' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_lastKnownParent) },
+
+	{ "managedObjects", "( 1.2.840.113556.1.4.654 NAME 'managedObjects' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_managedObjects) },
+
+	{ "masteredBy", "( 1.2.840.113556.1.4.1409 NAME 'masteredBy' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_masteredBy) },
+	
+	{ "mS-DS-ConsistencyChildCount", "( 1.2.840.113556.1.4.1361 NAME 'mS-DS-ConsistencyChildCount' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_mS_DS_ConsistencyChildCount) },
+
+	{ "mS-DS-ConsistencyGuid", "( 1.2.840.113556.1.4.1360 NAME 'mS-DS-ConsistencyGuid' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_mS_DS_ConsistencyGuid) },
+
+	{ "msCOM-PartitionSetLink", "( 1.2.840.113556.1.4.1424 NAME 'msCOM-PartitionSetLink' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msCOM_PartitionSetLink) },
+
+	{ "msCOM-UserLink", "( 1.2.840.113556.1.4.1425 NAME 'msCOM-UserLink' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msCOM_UserLink) },
+
+	{ "msDS-Approx-Immed-Subordinates", "( 1.2.840.113556.1.4.1669 NAME 'msDS-Approx-Immed-Subordinates' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msDS_Approx_Immed_Subordinates) },
+
+	{ "msDs-masteredBy", "( 1.2.840.113556.1.4.1837 NAME 'msDs-masteredBy' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msDs_masteredBy) },
+
+	{ "msDS-MembersForAzRoleBL", "( 1.2.840.113556.1.4.1807 NAME 'msDS-MembersForAzRoleBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msDS_MembersForAzRoleBL) },
+
+	{ "msDS-NCReplCursors", "( 1.2.840.113556.1.4.1704 NAME 'msDS-NCReplCursors' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msDS_NCReplCursors) },
+
+	{ "msDS-NCReplInboundNeighbors", "( 1.2.840.113556.1.4.1705 NAME 'msDS-NCReplInboundNeighbors' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+		NULL, 0,
+		NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL,
+		offsetof(struct slap_internal_schema, si_ad_msDS_NCReplInboundNeighbors) },
+
+	{ "msDS-NCReplOutboundNeighbors", "( 1.2.840.113556.1.4.1706 NAME 'msDS-NCReplOutboundNeighbors' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_NCReplOutboundNeighbors) },
+
+	{ "msDS-NcType", "( 1.2.840.113556.1.4.2024 NAME 'msDS-NcType' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_NcType) },
+   
+	{ "msDS-NonMembersBL", "( 1.2.840.113556.1.4.1794 NAME 'msDS-NonMembersBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_NonMembersBL) },
+
+	{ "msDS-ObjectReferenceBL", "( 1.2.840.113556.1.4.1841 NAME 'msDS-ObjectReferenceBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_ObjectReferenceBL) },
+
+	{ "msDS-OperationsForAzRoleBL", "( 1.2.840.113556.1.4.1813 NAME 'msDS-OperationsForAzRoleBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_OperationsForAzRoleBL) },
+
+	{ "msDS-OperationsForAzTaskBL", "( 1.2.840.113556.1.4.1809 NAME 'msDS-OperationsForAzTaskBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_OperationsForAzTaskBL) },
+
+	{ "msDS-ReplAttributeMetaData", "( 1.2.840.113556.1.4.1707 NAME 'msDS-ReplAttributeMetaData' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_ReplAttributeMetaData) },
+
+	{ "msDS-ReplValueMetaData", "( 1.2.840.113556.1.4.1708 NAME 'msDS-ReplValueMetaData' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema,si_ad_msDS_ReplValueMetaData ) },
+
+
+	{ "msDS-TasksForAzRoleBL", "( 1.2.840.113556.1.4.1815 NAME 'msDS-TasksForAzRoleBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_TasksForAzRoleBL) },
+
+	{ "msDS-TasksForAzTaskBL", "( 1.2.840.113556.1.4.1811 NAME 'msDS-TasksForAzTaskBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_TasksForAzTaskBL) },
+
+	{ "netbootSCPBL", "( 1.2.840.113556.1.4.864 NAME 'netbootSCPBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_netbootSCPBL) },
+
+	{ "nonSecurityMemberBL", "( 1.2.840.113556.1.4.531 NAME 'nonSecurityMemberBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_nonSecurityMemberBL) },
+
+	{ "objectVersion", "( 1.2.840.113556.1.2.76 NAME 'objectVersion' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_objectVersion) },
+
+	{ "otherWellKnownObjects", "( 1.2.840.113556.1.4.1359 NAME 'otherWellKnownObjects' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_otherWellKnownObjects) },
+
+	{ "ownerBL", "( 1.2.840.113556.1.2.104 NAME 'ownerBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_ownerBL) },
+
+	{ "parentGUID", "( 1.2.840.113556.1.4.1224 NAME 'parentGUID' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_parentGUID) },
+
+	{ "partialAttributeDeletionList", "( 1.2.840.113556.1.4.663 NAME 'partialAttributeDeletionList' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_partialAttributeDeletionList) },
+
+	{ "partialAttributeSet", "( 1.2.840.113556.1.4.640 NAME 'partialAttributeSet' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_partialAttributeSet) },
+
+	{ "possibleInferiors", "( 1.2.840.113556.1.4.915 NAME 'possibleInferiors' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.44 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_possibleInferiors) },
+
+	{ "proxiedObjectName", "( 1.2.840.113556.1.4.1249 NAME 'proxiedObjectName' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_proxiedObjectName) },
+
+       { "proxyAddresses", "( 1.2.840.113556.1.2.210 NAME 'proxyAddresses' "
+	 "EQUALITY caseIgnoreMatch "
+	 "SUBSTR caseIgnoreSubstringsMatch "
+	 "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_proxyAddresses) },
+
+	{ "queryPolicyBL", "( 1.2.840.113556.1.4.608 NAME 'queryPolicyBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_queryPolicyBL) },
+
+	{ "replPropertyMetaData", "( 1.2.840.113556.1.4.3 NAME 'replPropertyMetaData' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_replPropertyMetaData) },
+
+	{ "replUpToDateVector", "( 1.2.840.113556.1.4.4 NAME 'replUpToDateVector' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_replUpToDateVector) },
+
+	{ "repsFrom", "( 1.2.840.113556.1.2.91 NAME 'repsFrom' "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_repsFrom) },
+
+	{ "repsTo", "( 1.2.840.113556.1.2.83 NAME 'repsTo' "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_repsTo) },
+
+	{ "revision", "( 1.2.840.113556.1.4.145 NAME 'revision' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_revision) },
+
+	{ "sDRightsEffective", "( 1.2.840.113556.1.4.1304 NAME 'sDRightsEffective' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_sDRightsEffective) },
+
+
+	{ "serverReferenceBL", "( 1.2.840.113556.1.4.516 NAME 'serverReferenceBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_serverReferenceBL) },
+
+	{ "showInAdvancedViewOnly", "( 1.2.840.113556.1.2.169 NAME 'showInAdvancedViewOnly' "
+	  "EQUALITY booleanMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_showInAdvancedViewOnly) },
+
+	{ "siteObjectBL", "( 1.2.840.113556.1.4.513 NAME 'siteObjectBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_siteObjectBL) },
+
+	{ "subRefs", "( 1.2.840.113556.1.2.7 NAME 'subRefs' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_subRefs) },
+
+	{ "systemFlags", "( 1.2.840.113556.1.4.375 NAME 'systemFlags' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, normalize_to_int32, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_systemFlags) },
+
+
+	{ "url", "( 1.2.840.113556.1.4.749 NAME 'url' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_url) },
+
+	{ "uSNDSALastObjRemoved", "( 1.2.840.113556.1.2.267 NAME 'uSNDSALastObjRemoved' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_uSNDSALastObjRemoved) },
+
+	{ "USNIntersite", "( 1.2.840.113556.1.2.469 NAME 'USNIntersite' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_USNIntersite) },
+
+	{ "uSNLastObjRem", "( 1.2.840.113556.1.2.121 NAME 'uSNLastObjRem' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_uSNLastObjRem) },
+
+	{ "uSNSource", "( 1.2.840.113556.1.4.896 NAME 'uSNSource' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_uSNSource) },
+
+	{ "wbemPath", "( 1.2.840.113556.1.4.301 NAME 'wbemPath' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_wbemPath) },
+
+	{ "wellKnownObjects", "( 1.2.840.113556.1.4.618 NAME 'wellKnownObjects' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_wellKnownObjects) },
+
+	{ "wWWHomePage", "( 1.2.840.113556.1.2.464 NAME 'wWWHomePage' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_wWWHomePage) },
+
+	{ "msSFU30PosixMemberOf", "( 1.2.840.113556.1.6.18.1.347 NAME 'msSFU30PosixMemberOf' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msSFU30PosixMemberOf) },
+
+	{ "msDFSR-ComputerReferenceBL", "( 1.2.840.113556.1.6.13.3.103 NAME 'msDFSR-ComputerReferenceBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDFSR_ComputerReferenceBL) },
+
+	  { "msDFSR-MemberReferenceBL", "( 1.2.840.113556.1.6.13.3.102 NAME 'msDFSR-MemberReferenceBL' "
+	    "EQUALITY distinguishedNameMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDFSR_MemberReferenceBL) },
+
+	{ "msDS-EnabledFeatureBL", "( 1.2.840.113556.1.4.2069 NAME 'msDS-EnabledFeatureBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_EnabledFeatureBL) },
+
+	{ "msDS-LastKnownRDN", "( 1.2.840.113556.1.4.2067 NAME 'msDS-LastKnownRDN' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_LastKnownRDN) },
+
+	{ "msDS-HostServiceAccountBL", "( 1.2.840.113556.1.4.2057 NAME 'msDS-HostServiceAccountBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_HostServiceAccountBL) },
+
+	{ "msDS-OIDToGroupLinkBl", "( 1.2.840.113556.1.4.2052 NAME 'msDS-OIDToGroupLinkBl' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_OIDToGroupLinkBl) },
+
+	{ "msDS-LocalEffectiveRecycleTime", "( 1.2.840.113556.1.4.2060 NAME 'msDS-LocalEffectiveRecycleTime' "
+	  "EQUALITY generalizedTimeMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_LocalEffectiveRecycleTime) },
+
+	{ "msDS-LocalEffectiveDeletionTime", "( 1.2.840.113556.1.4.2059 NAME 'msDS-LocalEffectiveDeletionTime' "
+	  "EQUALITY generalizedTimeMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_LocalEffectiveDeletionTime) },
+
+	{ "isRecycled", "( 1.2.840.113556.1.4.2058 NAME 'isRecycled' "
+	  "EQUALITY booleanMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_isRecycled) },
+
+	{ "msDS-PSOApplied", "( 1.2.840.113556.1.4.2021 NAME 'msDS-PSOApplied' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_PSOApplied) },
+
+	{ "msDS-PrincipalName", "( 1.2.840.113556.1.4.1865 NAME 'msDS-PrincipalName' "
+	  "EQUALITY caseIgnoreMatch "
+	  "SUBSTR caseIgnoreSubstringsMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_PrincipalName) },
+
+	{ "msDS-RevealedListBL", "( 1.2.840.113556.1.4.1975 NAME 'msDS-RevealedListBL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_RevealedListBL) },
+
+	{ "msDS-AuthenticatedToAccountlist", "( 1.2.840.113556.1.4.1957 NAME 'msDS-AuthenticatedToAccountlist' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_AuthenticatedToAccountlist) },
+
+	{ "msDS-IsPartialReplicaFor", "( 1.2.840.113556.1.4.1934 NAME 'msDS-IsPartialReplicaFor' "
+	   "EQUALITY distinguishedNameMatch "
+	   "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_IsPartialReplicaFor) },
+
+	{ "msDS-IsDomainFor", "( 1.2.840.113556.1.4.1933 NAME 'msDS-IsDomainFor' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_IsDomainFor) },
+
+	{ "msDS-IsFullReplicaFor", "(1.2.840.113556.1.4.1932 NAME 'msDS-IsFullReplicaFor' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_IsFullReplicaFor) },
+
+	{ "msDS-RevealedDSAs", "( 1.2.840.113556.1.4.1930 NAME 'msDS-RevealedDSAs' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_RevealedDSAs) },
+
+       { "msDS-KrbTgtLinkBl", "(1.2.840.113556.1.4.1931 NAME 'msDS-KrbTgtLinkBl' "
+	 "EQUALITY distinguishedNameMatch "
+	 "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_KrbTgtLinkBl) },
+
+	{ "whenCreated", "( 1.2.840.113556.1.2.2 NAME 'whenCreated' "
+	  "EQUALITY generalizedTimeMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_whenCreated) },
+
+	{ "whenChanged", "(  1.2.840.113556.1.2.3 NAME 'whenChanged' "
+	  "EQUALITY generalizedTimeMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_whenChanged) },
+
+	{ "uSNCreated", "( 1.2.840.113556.1.2.19 NAME 'uSNCreated' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX  1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_uSNCreated) },
+
+	{ "uSNChanged", "( 1.2.840.113556.1.2.120 NAME 'uSNChanged' "
+	  "EQUALITY integerMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27  SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_uSNChanged) },
+
+	{ "objectGUID", "( 1.2.840.113556.1.4.2 NAME 'objectGUID' "
+	  "EQUALITY octetStringMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_objectGUID) },
+
+	{ "msDS-NC-RO-Replica-Locations-BL", "( 1.2.840.113556.1.4.1968 NAME 'msDS-NC-RO-Replica-Locations-BL' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_msDS_NC_RO_Replica_Locations_BL) },
+
+	{ "memberOf", "( 1.2.840.113556.1.2.102 NAME 'memberOf' "
+	  "EQUALITY distinguishedNameMatch "
+	  "SYNTAX 1.3.6.1.4.1.1466.115.121.1.12)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_memberOf) },
+
+	  { "extendedClassInfo", "( 1.2.840.113556.1.4.908 NAME 'extendedClassInfo' "
+	    "EQUALITY caseIgnoreMatch "
+	    "SUBSTR caseIgnoreSubstringsMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_extendedClassInfo) },
+
+	  { "extendedAttributeInfo", "( 1.2.840.113556.1.4.909 NAME 'extendedAttributeInfo' "
+	    "EQUALITY caseIgnoreMatch "
+	    "SUBSTR caseIgnoreSubstringsMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15)",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_extendedAttributeInfo) },
+
+	  { "groupType", "( 1.2.840.113556.1.4.750 NAME 'groupType' "
+	    "EQUALITY integerMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 "
+	    "SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, normalize_to_int32, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_groupType) },
+
+	  { "primaryGroupID", "( 1.2.840.113556.1.4.98 NAME 'primaryGroupID' "
+	    "EQUALITY integerMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 "
+	    "SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, normalize_to_int32, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_primaryGroupID) },
+
+	  { "userAccountControl", "( 1.2.840.113556.1.4.8 NAME 'userAccountControl' "
+	    "EQUALITY integerMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 "
+	    "SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, normalize_to_int32, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_userAccountControl) },
+
+	   { "sAMAccountType", "( 1.2.840.113556.1.4.302 NAME 'sAMAccountType' "
+	    "EQUALITY integerMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 "
+	    "SINGLE-VALUE )",
+	  NULL, 0,
+	  NULL, NULL,
+	  NULL, normalize_to_int32, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_sAMAccountType) },
+
+	  { "dSHeuristics", "( 1.2.840.113556.1.2.212 NAME 'dSHeuristics' "
+	    "EQUALITY caseIgnoreMatch "
+	    "SUBSTR caseIgnoreSubstringsMatch "
+	    "SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 "
+	    "SINGLE-VALUE )",
+	  NULL, 0,
+	  validate_dSHeuristics, NULL,
+	  NULL, NULL, NULL, NULL, NULL,
+	  offsetof(struct slap_internal_schema, si_ad_dSHeuristics) },
+#endif /*ENABLE_SAMBA_COMPATIBILITY */
 
 	{ NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0 }
 };
