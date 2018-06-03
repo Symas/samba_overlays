@@ -279,6 +279,7 @@ OL_ARG_ENABLE(rlookups,[    --enable-rlookups	  enable reverse lookups of client
 OL_ARG_ENABLE(slapi,[    --enable-slapi        enable SLAPI support (experimental)], no)dnl
 OL_ARG_ENABLE(slp,[    --enable-slp          enable SLPv2 support], no)dnl     
 OL_ARG_ENABLE(wrappers,[    --enable-wrappers	  enable tcp wrapper support], no)dnl
+OL_ARG_ENABLE(sambacompatibility,[    --enable-sambacompatibility	  enable Samba compatibility], no)dnl
 
 dnl ----------------------------------------------------------------
 dnl SLAPD Backend Options
@@ -3163,6 +3164,10 @@ if test "$ol_enable_slapi" != no ; then
 	AC_DEFINE(ENABLE_SLAPI,1,[define to enable slapi library])
 	BUILD_SLAPI=yes
 	SLAPD_SLAPI_DEPEND=libslapi.a
+fi
+
+if test "$ol_enable_sambacompatibility" != no ; then
+	AC_DEFINE(ENABLE_SAMBA_COMPATIBILITY,1,[define to enable Samba compatibility])
 fi
 
 dnl ----------------------------------------------------------------

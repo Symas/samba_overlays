@@ -66,6 +66,9 @@
 /* define to enable rewriting in back-ldap and back-meta */
 #undef ENABLE_REWRITE
 
+/* define to enable schema compatibility for samba */
+#undef ENABLE_SAMBA_COMPATIBILITY
+
 /* define to enable slapi library */
 #undef ENABLE_SLAPI
 
